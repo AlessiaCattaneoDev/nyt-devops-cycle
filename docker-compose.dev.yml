@@ -1,0 +1,27 @@
+# Override OPT-IN per l'hot reload in container (dev server Vite al posto di nginx).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# node_modules e dist restano quelli "baked" nell'immagine (stage `dev`);
+# gli anonymous volume li schermano dal bind mount.
+#
+# NOTA: su Docker Desktop per macOS il file-watching nativo (rolldown/esbuild)
+# sui bind mount puo' dare errori intermittenti "os error 35". Se capita, usa
+# il loop di sviluppo sull'host (vedi README §4.3): frontend con `npm run dev`
+# fuori da Docker, backend nel container.
+
+services:
+  frontend:
+    build:
+      target: dev
+    image: nyt-devops/frontend:dev
+    environment:
+      VITE_BACKEND_ORIGIN: 'http://backend:3001'
+      VITE_APP_ENV: development
+      VITE_DEBUG_ENDPOINTS: 'true'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/dist
+    ports: !override
+      - '8080:5173'

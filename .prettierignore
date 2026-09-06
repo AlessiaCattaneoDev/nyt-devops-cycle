@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/dist-ssr
+**/*.tsbuildinfo
+package-lock.json
+**/package-lock.json
+frontend/public
+.vercel
+coverage
+*.md
+docs

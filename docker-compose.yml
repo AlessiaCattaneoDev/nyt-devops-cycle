@@ -1,0 +1,43 @@
+name: nyt-devops-cycle
+
+# Ambiente locale "production-like": il frontend e' servito da nginx a partire
+# dalla build statica; il backend e' il BFF Express.
+#   docker compose -f docker-compose.yml up --build       (solo questo file)
+#   docker compose up --build                             (applica anche l'override: hot reload)
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: nyt-devops/backend:local
+    env_file:
+      - .env
+    environment:
+      APP_ENV: development
+      PORT: '3001'
+      CORS_ORIGINS: 'http://localhost:8080,http://localhost:5173'
+    ports:
+      - '3001:3001'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:3001/api/health']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_ENV: development
+        VITE_DEBUG_ENDPOINTS: 'true'
+    image: nyt-devops/frontend:local
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '8080:80'
+    restart: unless-stopped
