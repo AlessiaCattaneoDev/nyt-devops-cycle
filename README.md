@@ -10,7 +10,7 @@ progetto sviluppato durante il percorso:
 
 | Risorsa | Link |
 | --- | --- |
-| URL pubblico (produzione) | _da compilare dopo il primo deploy_ |
+| URL pubblico (produzione) | <https://nyt-devops-cycle-omega.vercel.app> |
 | Pipeline CI/CD | <https://github.com/AlessiaCattaneoDev/nyt-devops-cycle/actions> |
 | Dashboard Sentry | _da compilare_ |
 | Uptime monitor | _da compilare_ |
@@ -340,7 +340,7 @@ il flag il tempo della demo e poi si rimuove (runbook §8).
 | Containerizzazione | Dockerfile frontend, docker-compose FE+BE, avvio locale | ✅ [frontend/Dockerfile](frontend/Dockerfile), [backend/Dockerfile](backend/Dockerfile), [docker-compose.yml](docker-compose.yml) |
 | Sicurezza e secret | `.env` + `.gitignore`, GitHub Secrets, no leak nei log | ✅ config nel repo · ⏳ passi manuali (runbook locale) |
 | Pipeline CI | lint + build container a ogni push su `main`, fallimento visibile | ✅ [main.yml](.github/workflows/main.yml) · ⏳ push iniziale + screenshot |
-| Pipeline CD + deploy | deploy automatico su Vercel (integrazione Git), URL pubblico | ✅ config · ⏳ import progetto Vercel (runbook locale) |
+| Pipeline CD + deploy | deploy automatico su Vercel (integrazione Git), URL pubblico | ✅ live: <https://nyt-devops-cycle-omega.vercel.app> |
 | Monitoraggio | UptimeRobot + Sentry, errore simulato, lettura alert | ✅ codice + questa sezione · ⏳ setup dashboard (runbook locale) |
 
 I passi ⏳ richiedono account/dashboard esterni e sono descritti comando per
