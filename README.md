@@ -332,16 +332,71 @@ il flag il tempo della demo e poi si rimuove (runbook §8).
 
 ---
 
-## 8. Stato della pianificazione
+## 8. Scelte e motivazioni, per step
 
-| Fase | Deliverable | Stato |
-| --- | --- | --- |
-| Esplorazione | analisi app, 3 ambienti, scelta strumenti, README | ✅ questo documento + spec locale |
-| Containerizzazione | Dockerfile frontend, docker-compose FE+BE, avvio locale | ✅ [frontend/Dockerfile](frontend/Dockerfile), [backend/Dockerfile](backend/Dockerfile), [docker-compose.yml](docker-compose.yml) |
-| Sicurezza e secret | `.env` + `.gitignore`, GitHub Secrets, no leak nei log | ✅ config nel repo · ⏳ passi manuali (runbook locale) |
-| Pipeline CI | lint + build container a ogni push su `main`, fallimento visibile | ✅ [main.yml](.github/workflows/main.yml) · ⏳ push iniziale + screenshot |
-| Pipeline CD + deploy | deploy automatico su Vercel (integrazione Git), URL pubblico | ✅ live: <https://nyt-devops-cycle-omega.vercel.app> |
-| Monitoraggio | UptimeRobot + Sentry, errore simulato, lettura alert | ✅ codice + questa sezione · ⏳ setup dashboard (runbook locale) |
+### Esplorazione
 
-I passi ⏳ richiedono account/dashboard esterni e sono descritti comando per
-comando nel runbook locale (`docs/runbook.md`, non versionato).
+App analizzata: SPA React/Vite che consuma le API pubbliche del NYT (nessun
+backend, chiavi API esposte nel bundle). 3 ambienti definiti — *development*
+(docker-compose locale), *staging* (Vercel Preview per ogni PR), *production*
+(Vercel su `main`). **CI/CD scelto: GitHub Actions** — repo su GitHub
+(integrazione nativa, runner gratuiti), niente infra CI da gestire, marketplace
+maturo (gitleaks, docker build); GitLab CI avrebbe richiesto un mirror del repo.
+
+### Containerizzazione
+
+`frontend/Dockerfile` **multi-stage** (build Node → runtime `nginx:alpine`,
+non-root, healthcheck): l'immagine finale è ~75 MB e serve solo static + fa da
+reverse-proxy `/api` verso il backend. `backend/Dockerfile` su `node:22-alpine`.
+`docker-compose.yml` orchestra i due servizi con dipendenza `service_healthy`.
+Testato: `docker compose up` → app su `:8080`, `/api/*` proxato al BFF.
+
+### Sicurezza e gestione secret
+
+Il difetto dell'app originale (chiavi `VITE_NYT_*` inlined nel bundle) è
+**corretto** introducendo un **BFF proxy**: il frontend chiama solo `/api/nyt/*`,
+le chiavi vivono lato server. `.env` in `.gitignore` (mai committato,
+verificato con `git log --all -- .env` vuoto); in cloud sono *Environment
+Variables* del progetto Vercel. Guardie automatiche in CI: **gitleaks**
+(scansione history) + job **bundle-hygiene** che fallisce se una chiave o
+`api.nytimes.com` rientra in `dist/`. Hardening BFF: `helmet`, CORS ristretto,
+`express-rate-limit`.
+
+### Pipeline CI
+
+[`.github/workflows/main.yml`](.github/workflows/main.yml), a ogni push su
+`main` e ogni PR: `lint` (oxlint + prettier), `typecheck` (tsc), `test-proxy`
+(unit test del proxy), `secret-scan` (gitleaks), `bundle-hygiene`,
+`build-images` (build immagini Docker + smoke test `curl /api/health` sul
+container). Job aggregante **`ci-ok`** = status check richiesto dalla branch
+protection su `main`. **Il lint fallisce in modo visibile**: `.oxlintrc.json`
+con `correctness: deny` → oxlint esce ≠ 0 su `debugger`/variabili inutilizzate
+→ job rosso → `ci-ok` rosso → merge bloccato ([PR #1](https://github.com/AlessiaCattaneoDev/nyt-devops-cycle/pull/1)
+lo dimostra).
+
+### Pipeline CD e deploy pubblico
+
+**Piattaforma: Vercel** (l'utente ha già l'account; il progetto originale
+deployava su GitHub Pages). Vercel rileva il monorepo come **progetto
+multi-service** ([`vercel.json`](vercel.json)): un service `frontend` (build
+Vite statica) + un service `backend` (Express), con rewrite `/api/*` → backend.
+**CD = integrazione Git di Vercel**: push su `main` → deploy di *Production*,
+PR → deploy di *Preview*; Vercel attende i check GitHub prima di buildare. Il
+job `cd-info` del workflow annota il deploy. URL pubblico:
+<https://nyt-devops-cycle-omega.vercel.app>.
+
+### Monitoraggio
+
+- **Uptime: UptimeRobot** (piano free, setup in 2 minuti, alert email): un
+  monitor HTTP sulla home + un monitor *keyword* su `/api/health` (verifica
+  anche che il backend risponda, non solo il CDN).
+- **Error tracking: Sentry** (piano free, SDK ufficiali): `@sentry/react` nel
+  frontend (init + `ErrorBoundary`), un transport minimale via `fetch` nel
+  backend (zero dipendenze, no-op senza DSN). `environment` = ambiente Vercel.
+- **Errore simulato**: rotte `/#/debug/boom` (frontend) e `/api/debug/boom`
+  (backend), dietro flag `*DEBUG_ENDPOINTS`. Verificato: entrambe generano una
+  issue in Sentry con `environment: production` e stack trace.
+- **Lettura degli alert**: procedura + tabella severità Sev1/2/3 nella §7.
+
+I documenti di design e il runbook operativo sono mantenuti in locale in
+`docs/` (non versionati).
