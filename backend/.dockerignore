@@ -4,3 +4,7 @@ node_modules
 !.env.example
 *.log
 .DS_Store
+*.test.mjs
+.oxlintrc.json
+Dockerfile
+.dockerignore

@@ -43,10 +43,14 @@ progetto sviluppato durante il percorso:
 
 ### La soluzione: BFF proxy
 
-Si introduce un **Backend For Frontend**: un piccolo proxy che inoltra le
+Si introduce un **Backend For Frontend**: un servizio Express che inoltra le
 chiamate all'API NYT e **tiene le chiavi lato server in ogni ambiente**. Il
 frontend chiama solo path relativi `/api/nyt/*` e non conosce né la chiave né
 l'host del NYT.
+
+Lo **stesso** servizio Express gira in entrambi gli ambienti — in locale come
+container `backend` di docker-compose, in cloud come *service* del progetto
+Vercel (progetto multi-service, vedi [`vercel.json`](vercel.json)):
 
 ```
                     ┌────────────────────────── development (locale) ─────────────────────────┐
@@ -54,13 +58,14 @@ l'host del NYT.
                     └───────────────────────────── docker-compose ───────────────────────────┘
 
                     ┌──────────────────── staging / production (Vercel) ──────────────────────┐
-  Browser  ──/api──▶ │  CDN statica (frontend/dist)  +  Serverless Functions api/  ──key──▶ NYT │
+  Browser  ─────────▶ │  frontend service (Vite build)                                          │
+           /api  ────▶ │  backend service (Express, stesso codice)  ──api-key──▶  api.nytimes.com │
                     └────────────────────────────────────────────────────────────────────────┘
 ```
 
-La logica del proxy vive **una sola volta** in
-[`shared/nytProxy.mjs`](shared/nytProxy.mjs); l'`server.js` di Express e le
-Function in [`api/`](api/) ne sono adattatori sottili.
+Il proxy vive in [`backend/src/nytProxy.mjs`](backend/src/nytProxy.mjs)
+(allowlist delle sezioni, cache TTL, normalizzazione degli errori); le rotte
+Express lo montano su `/api/nyt/*`.
 
 ### I tre ambienti
 
@@ -93,25 +98,20 @@ nyt-devops-cycle/
 │   ├── Dockerfile            # multi-stage: build Node → runtime nginx
 │   ├── nginx.conf            # SPA fallback + proxy /api → backend:3001 (solo compose)
 │   └── src/…                 # + src/lib/monitoring.ts (Sentry), src/pages/DebugBoom.tsx
-├── backend/                  # BFF Express per l'ambiente locale
-│   ├── Dockerfile            # contesto di build = radice repo (serve anche ./shared)
-│   └── src/                  # server.js, routes.js
-├── shared/                   # logica condivisa, zero dipendenze
-│   ├── nytProxy.mjs          # proxy NYT (allowlist sezioni, cache TTL, normalizzazione errori)
-│   ├── nytProxy.test.mjs     # unit test (node:test)
-│   └── observability.mjs     # wrapper Sentry lato server (lazy, no-op se non configurato)
-├── api/                      # Vercel Serverless Functions (staging/produzione)
-│   ├── health.js             # GET /api/health
-│   ├── debug/boom.js         # GET /api/debug/boom  (dietro flag)
-│   └── nyt/
-│       ├── topstories/[section].js
-│       └── mostpopular.js
-├── .github/workflows/main.yml   # pipeline CI + CD
+├── backend/                  # servizio BFF Express (locale via compose, cloud come service Vercel)
+│   ├── Dockerfile            # node:22-alpine, CMD node src/server.js
+│   ├── nytProxy.test.mjs     # unit test del proxy (node:test)
+│   └── src/
+│       ├── server.js         # app Express: helmet, cors, rate-limit, error handler → Sentry
+│       ├── routes.js         # /api/health, /api/nyt/topstories/:section, /api/nyt/mostpopular, /api/debug/boom
+│       ├── nytProxy.mjs      # proxy NYT: allowlist sezioni, cache TTL, normalizzazione errori
+│       └── observability.mjs # transport Sentry via fetch (no-op senza DSN)
+├── .github/workflows/main.yml   # pipeline CI (+ nota CD)
 ├── docker-compose.yml           # ambiente locale: nginx (frontend) + BFF Express (backend)
 ├── docker-compose.dev.yml       # override opt-in: hot reload con vite dev server
-├── vercel.json                  # build statica + header di sicurezza
+├── vercel.json                  # progetto multi-service: frontend (vite) + backend, rewrite /api → backend
 ├── .env.example                 # template dei secret (il vero .env NON è committato)
-└── .gitignore  .dockerignore  .prettierrc.json  .editorconfig
+└── .gitignore  .prettierrc.json  .editorconfig
 
 # docs/  — design e runbook operativo, mantenuti in locale (non versionati)
 ```
@@ -197,7 +197,7 @@ docker compose down -v            # + rimuove i volumi (node_modules del fronten
 # fuori da Docker
 cd frontend && npm install && npm run dev      # solo frontend (proxy → localhost:3001)
 cd backend  && npm install && npm run dev      # solo BFF, con --watch
-node --test "shared/*.test.mjs"                # unit test del proxy
+npm --prefix backend test                      # unit test del proxy
 ```
 
 ---
@@ -225,29 +225,27 @@ deploy non parte e (con la branch protection attiva) la PR non è
 mergeabile. Il runbook locale descrive la dimostrazione con un errore di
 lint volontario.
 
-### Stage CD (automatico, dopo `ci-ok`)
+### Stage CD — integrazione Git di Vercel
 
-| Job | Quando | Cosa fa |
-| --- | --- | --- |
-| `deploy-preview` | su ogni **PR** | `vercel deploy` (Preview) → URL di **staging**, scritto nel job summary |
-| `deploy-production` | su **push a `main`** | `vercel deploy --prod` → URL di **produzione**, scritto nel job summary |
+Il deploy **non** passa da GitHub Actions: è l'**integrazione Git di Vercel**
+(progetto multi-service in [`vercel.json`](vercel.json)) a gestirlo.
 
-Da questo momento **ogni push su `main` che supera la CI arriva in produzione
-senza interventi manuali**.
-
-### Secret usati dalla pipeline
-
-Solo l'autenticazione a Vercel, come **GitHub Secrets** (mascherati in
-automatico):
-
-| Secret | Dove si prende |
+| Evento | Deploy Vercel |
 | --- | --- |
-| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens |
-| `VERCEL_ORG_ID` | `.vercel/project.json` dopo `vercel link` |
-| `VERCEL_PROJECT_ID` | idem |
+| push su `main` | **Production** |
+| Pull Request verso `main` | **Preview** (staging), URL commentato sulla PR |
 
-Le **chiavi NYT e i DSN Sentry non stanno su GitHub**: sono Environment
-Variables del progetto Vercel, perché è lì che girano le Function a runtime.
+Vercel è configurato per attendere i check di GitHub (*Settings → Git →
+deployment protection*): builda solo se la CI è verde. Quindi **ogni push su
+`main` che supera la CI arriva in produzione senza interventi manuali**. Il job
+`cd-info` nel workflow lo segnala nel summary.
+
+### Secret
+
+- **La pipeline CI non usa alcun secret** (niente token, niente `VERCEL_*`).
+- Le **chiavi NYT** e i **DSN Sentry** sono *Environment Variables* del
+  progetto Vercel (scope Production/Preview) — è lì che gira il servizio
+  backend a runtime. Mai nel repo, mai nel bundle.
 
 ---
 
@@ -258,7 +256,7 @@ Variables del progetto Vercel, perché è lì che girano le Function a runtime.
 | Secret fuori dal repo | tutte le chiavi in `.env` (locale) o nelle env di Vercel; nel repo solo `.env.example` con placeholder |
 | `.env` mai committato | `.env` e `.env.*` in [.gitignore](.gitignore) (`!.env.example` come eccezione) |
 | Verifica sulla history | `git log --all --full-history -- .env` (vuoto) + job `secret-scan` (gitleaks) a ogni push come guardia permanente |
-| Secret nel repo remoto | `gh secret set …` per i 3 secret Vercel (vedi runbook) |
+| Secret nel repo remoto | nessuno: il deploy è di Vercel, la CI non usa secret |
 | Nessun secret nei log della pipeline | solo GitHub Secrets (output `***`); nessun `echo` di variabili sensibili; `--token` passato via `env:` |
 | Chiave fuori dal bundle | il frontend non ha più variabili `VITE_NYT_*`; il job `bundle-hygiene` fallisce se una chiave rientra in `dist/` |
 | Hardening del BFF | `helmet`, CORS ristretto agli origin noti, `express-rate-limit` |
@@ -282,19 +280,18 @@ Due monitor sull'URL di produzione, intervallo 5 minuti, alert via email:
   [`src/lib/monitoring.ts`](frontend/src/lib/monitoring.ts), con
   `Sentry.ErrorBoundary` attorno all'app. Attivo solo se `VITE_SENTRY_DSN` è
   impostato.
-- **Backend / Function:** trasporto Sentry minimale via `fetch` in
-  [`shared/observability.mjs`](shared/observability.mjs) — nessuna dipendenza,
-  no-op con fallback su `console.error` se `SENTRY_DSN_BACKEND` non è
-  impostato. L'error handler di Express e i `catch` delle Function chiamano
-  `captureError`.
+- **Backend:** transport Sentry minimale via `fetch` in
+  [`backend/src/observability.mjs`](backend/src/observability.mjs) — nessuna
+  dipendenza, no-op con fallback su `console.error` se `SENTRY_DSN_BACKEND`
+  non è impostato. L'error handler di Express chiama `captureError`.
 
 ### Simulare un errore (step "Simula autonomamente un errore")
 
 | Percorso | Come | Cosa aspettarsi |
 | --- | --- | --- |
 | Frontend | apri `<url>/#/debug/boom` e premi "Genera errore" | fallback dell'ErrorBoundary + nuova issue in Sentry (progetto frontend) |
-| Backend (locale) | `curl http://localhost:8080/api/debug/boom` | risposta `500 {"error":"internal_error"}` + issue in Sentry (progetto backend) |
-| Function (Vercel) | `curl <url>/api/debug/boom` con `DEBUG_ENDPOINTS=true` | `500 {"simulated":true}` + issue in Sentry |
+| Backend (locale) | `curl http://localhost:8080/api/debug/boom` | `500 {"error":"internal_error"}` + issue in Sentry (progetto backend) |
+| Backend (Vercel) | `curl <url>/api/debug/boom` con `DEBUG_ENDPOINTS=true` | `500 {"error":"internal_error"}` + issue in Sentry |
 
 Le rotte di debug sono attive solo se `APP_ENV !== 'production'` **oppure**
 `DEBUG_ENDPOINTS=true` / `VITE_DEBUG_ENDPOINTS=true`. In produzione si abilita
@@ -343,7 +340,7 @@ il flag il tempo della demo e poi si rimuove (runbook §8).
 | Containerizzazione | Dockerfile frontend, docker-compose FE+BE, avvio locale | ✅ [frontend/Dockerfile](frontend/Dockerfile), [backend/Dockerfile](backend/Dockerfile), [docker-compose.yml](docker-compose.yml) |
 | Sicurezza e secret | `.env` + `.gitignore`, GitHub Secrets, no leak nei log | ✅ config nel repo · ⏳ passi manuali (runbook locale) |
 | Pipeline CI | lint + build container a ogni push su `main`, fallimento visibile | ✅ [main.yml](.github/workflows/main.yml) · ⏳ push iniziale + screenshot |
-| Pipeline CD + deploy | deploy automatico su Vercel, URL pubblico | ✅ workflow · ⏳ setup progetto Vercel (runbook locale) |
+| Pipeline CD + deploy | deploy automatico su Vercel (integrazione Git), URL pubblico | ✅ config · ⏳ import progetto Vercel (runbook locale) |
 | Monitoraggio | UptimeRobot + Sentry, errore simulato, lettura alert | ✅ codice + questa sezione · ⏳ setup dashboard (runbook locale) |
 
 I passi ⏳ richiedono account/dashboard esterni e sono descritti comando per

@@ -3,14 +3,14 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "BFF proxy verso l'API NYT per l'ambiente locale (docker-compose)",
+  "description": "BFF: proxy verso l'API NYT (tiene le chiavi lato server). Gira in locale con docker-compose e in cloud come service Vercel.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "lint": "oxlint",
     "format:check": "prettier --check .",
-    "test": "node --test"
+    "test": "node --test \"*.test.mjs\""
   },
   "dependencies": {
     "cors": "^2.8.5",

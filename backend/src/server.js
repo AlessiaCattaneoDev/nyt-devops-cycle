@@ -3,7 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import { registerRoutes } from './routes.js'
-import { initObservability, captureError } from '../../shared/observability.mjs'
+import { initObservability, captureError } from './observability.mjs'
 
 const PORT = Number(process.env.PORT ?? 3001)
 const APP_ENV = process.env.APP_ENV ?? 'development'

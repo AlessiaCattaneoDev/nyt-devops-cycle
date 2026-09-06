@@ -1,15 +1,14 @@
 name: nyt-devops-cycle
 
-# Ambiente locale "production-like": il frontend e' servito da nginx a partire
-# dalla build statica; il backend e' il BFF Express.
-#   docker compose -f docker-compose.yml up --build       (solo questo file)
-#   docker compose up --build                             (applica anche l'override: hot reload)
+# Ambiente locale: frontend servito da nginx (build statica) + BFF Express.
+#   docker compose up --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build   (hot reload)
 
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     image: nyt-devops/backend:local
     env_file:
       - .env

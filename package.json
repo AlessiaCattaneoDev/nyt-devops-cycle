@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Ciclo DevOps completo attorno a una SPA React: container locale, CI/CD, sicurezza, monitoraggio.",
   "scripts": {
-    "test": "node --test \"shared/*.test.mjs\"",
-    "format:check": "prettier --check --cache \"{api,backend,frontend,shared}/**/*.{js,mjs,ts,tsx,css,json}\" \"*.{json,yml}\" \"!**/node_modules/**\" \"!**/dist/**\"",
-    "format:write": "prettier --write \"{api,backend,frontend,shared}/**/*.{js,mjs,ts,tsx,css,json}\" \"*.{json,yml}\" \"!**/node_modules/**\" \"!**/dist/**\""
+    "test": "npm --prefix backend test",
+    "format:check": "prettier --check --cache \"{backend,frontend}/**/*.{js,mjs,ts,tsx,css,json}\" \"*.{json,yml}\" \"!**/node_modules/**\" \"!**/dist/**\"",
+    "format:write": "prettier --write \"{backend,frontend}/**/*.{js,mjs,ts,tsx,css,json}\" \"*.{json,yml}\" \"!**/node_modules/**\" \"!**/dist/**\""
   },
   "devDependencies": {
     "prettier": "3.9.6"

@@ -1,4 +1,4 @@
-import { handleNytRequest } from '../../shared/nytProxy.mjs'
+import { handleNytRequest } from './nytProxy.mjs'
 
 const debugEnabled = process.env.APP_ENV !== 'production' || process.env.DEBUG_ENDPOINTS === 'true'
 

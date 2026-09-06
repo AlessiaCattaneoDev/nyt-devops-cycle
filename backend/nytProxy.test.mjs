@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { handleNytRequest, _clearCache } from './nytProxy.mjs'
+import { handleNytRequest, _clearCache } from './src/nytProxy.mjs'
 
 const realFetch = globalThis.fetch
 
