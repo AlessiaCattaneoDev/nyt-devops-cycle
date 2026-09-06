@@ -28,3 +28,8 @@ export function initMonitoring(): void {
 }
 
 export { Sentry }
+
+// demo: un solo errore di lint (debugger) per verificare che la pipeline fallisca
+export function brokenDemo() {
+  debugger
+}
